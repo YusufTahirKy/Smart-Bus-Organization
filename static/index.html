@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>İETT Dinamik Rotalama Merkezi</title>
+    <!-- PWA Meta Tags -->
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#000000">
+    <link rel="apple-touch-icon" href="/static/icon.svg">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <!-- Styles -->
+    <link rel="stylesheet" href="/static/style.css?v=9">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js?v=6"></script>
+    <!-- Leaflet (OpenStreetMap) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar glass-panel">
+            <div class="logo">
+                <i class="fa-solid fa-bus-simple"></i>
+                <h2>İETT Rotalama</h2>
+            </div>
+
+            <nav class="nav-menu">
+                <a class="active" onclick="switchTab('dashboard')"><i class="fa-solid fa-chart-pie"></i> Canlı Durum</a>
+                <a onclick="switchTab('route-analysis')"><i class="fa-solid fa-route"></i> Rota Analizi</a>
+                <a onclick="switchTab('density-analysis')"><i class="fa-solid fa-chart-area"></i> Rota Yoğunluk
+                    Analizi</a>
+                <a onclick="switchTab('notifications')"><i class="fa-solid fa-bell"></i> Bildirimler</a>
+            </nav>
+
+            <!-- Login Panel -->
+            <div id="loginPanel" style="margin-top: auto; display: flex; flex-direction: column; gap: 10px;">
+                <p style="font-size:0.75rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em;">
+                    <i class="fa-solid fa-user-lock"></i> Yönetici Girişi
+                </p>
+                <input type="text" id="adminUser" placeholder="Kullanıcı Adı" style="font-size:0.85rem; padding:9px 12px;">
+                <input type="password" id="adminPass" placeholder="Şifre" style="font-size:0.85rem; padding:9px 12px;"
+                    onkeypress="if(event.key==='Enter') attemptLogin()">
+                <button class="btn btn-primary" onclick="attemptLogin()" style="font-size:0.85rem; padding:9px;">
+                    <i class="fa-solid fa-right-to-bracket"></i> Giriş Yap
+                </button>
+            </div>
+
+            <!-- After login success -->
+            <div id="loginSuccess" class="hidden" style="margin-top: auto; display: flex; flex-direction: column; gap: 8px;">
+                <div style="display:flex; align-items:center; gap:10px; background:rgba(16,185,129,0.1); border:1px solid rgba(16,185,129,0.3); border-radius:10px; padding:12px 14px;">
+                    <i class="fa-solid fa-circle-check" style="color:var(--success); font-size:1.1rem;"></i>
+                    <div>
+                        <div style="font-size:0.82rem; font-weight:600; color:var(--success);">Giriş Yapıldı</div>
+                        <div style="font-size:0.75rem; color:var(--text-muted);">iett_admin</div>
+                    </div>
+                </div>
+                <button class="btn" onclick="document.getElementById('loginSuccess').classList.add('hidden'); document.getElementById('loginPanel').classList.remove('hidden');"
+                    style="font-size:0.8rem; padding:8px; border:1px solid var(--border);">
+                    <i class="fa-solid fa-right-from-bracket"></i> Çıkış Yap
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="top-header glass-panel">
+                <div class="header-left">
+                    <button class="mobile-menu-btn" onclick="toggleMobileMenu()">
+                        <i class="fa-solid fa-bars"></i>
+                    </button>
+                    <button class="theme-toggle-btn" onclick="toggleTheme()" id="themeToggleBtn">
+                        <i class="fa-solid fa-sun"></i>
+                    </button>
+                </div>
+                <div class="header-center">
+                    <div class="mobile-logo">
+                        <i class="fa-solid fa-bus-simple"></i>
+                        <span>İETT</span>
+                    </div>
+                    <div class="header-info">
+                        <h1 id="pageTitle">Sistem Kontrol Paneli</h1>
+                        <p id="lastUpdate">Son Güncelleme: Bekleniyor...</p>
+                    </div>
+                </div>
+                <div class="header-right">
+                    <button class="btn btn-primary" onclick="triggerCycle()" id="manualRouteBtn">
+                        <i class="fa-solid fa-rotate"></i> <span>Manuel Rotalama</span>
+                    </button>
+                </div>
+            </header>
+
+            <!-- TAB 1: Canlı Durum -->
+            <div id="tab-dashboard" class="tab-content active">
+                <div class="dashboard-grid">
+                    <!-- Canlı Hat Durumları -->
+                    <div class="status-section glass-panel"
+                        style="display: flex; flex-direction: column; max-height: calc(100vh - 120px);">
+                        <div class="section-header">
+                            <h3><i class="fa-solid fa-tower-broadcast"></i> Canlı Hat Durumları</h3>
+                            <div class="legend">
+                                <span class="indicator danger">Aşırı Yoğun</span>
+                                <span class="indicator warning">Normal</span>
+                                <span class="indicator success">Boş</span>
+                            </div>
+                        </div>
+                        <div class="routes-list" id="routesList" style="flex: 1; overflow-y: auto; padding-right: 8px;">
+                            <div class="loading">Veriler yükleniyor...</div>
+                        </div>
+                    </div>
+
+                    <!-- Son Yönlendirmeler / Değişen Hatlar -->
+                    <div class="action-section"
+                        style="display: flex; flex-direction: column; gap: 20px; max-height: calc(100vh - 120px);">
+                        <div class="glass-panel" style="flex: 1; display: flex; flex-direction: column; overflow: hidden;">
+                            <div class="section-header">
+                                <h3><i class="fa-solid fa-shuffle"></i> Son Yönlendirmeler</h3>
+                            </div>
+                            <div id="reroutesList" class="reroutes-list" style="flex: 1; overflow-y: auto; padding-right: 8px;">
+                                <div class="loading">Yönlendirme bekleniyor...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 2: Rota Analizi (Şoför Seçim Paneli) -->
+            <div id="tab-route-analysis" class="tab-content glass-panel analysis-panel">
+                <div class="section-header">
+                    <h3><i class="fa-solid fa-route"></i> Şoför Rota Seçim Paneli</h3>
+                    <p style="color: var(--text-muted); font-size: 0.9rem;">Aktif hattınızdan daha yoğun bir hatta geçiş yaparak sistemin rahatlamasına yardımcı olabilirsiniz.</p>
+                </div>
+                
+                <div class="driver-selection-container" style="display: flex; gap: 24px; margin-top: 20px; flex-wrap: wrap;">
+                    
+                    <!-- Sol Taraf: Şoför Bilgi Girişi -->
+                    <div style="flex: 1; min-width: 300px; display: flex; flex-direction: column; gap: 16px;">
+                        <div style="background: var(--bg-card); padding: 20px; border-radius: 6px; border: 1px solid var(--border);">
+                            <h4 style="margin-bottom: 16px; color: var(--text-main);"><i class="fa-solid fa-id-card"></i> Şoför Girişi</h4>
+                            <div class="control-group" style="display: flex; flex-direction: column; gap: 12px;">
+                                <input type="text" id="routeDriverId" oninput="syncDriverContext()" placeholder="Sürücü ID (Örn: DRV-105)" style="padding: 12px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-main); color: var(--text-main);">
+                                <input type="text" id="routeCurrentLine" oninput="syncDriverContext()" placeholder="Mevcut Hattınız (Örn: 132G)" style="padding: 12px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-main); color: var(--text-main);">
+                                <button class="btn btn-primary" onclick="fetchRecommendedRoutes()" style="padding: 12px; margin-top: 8px;">
+                                    <i class="fa-solid fa-robot"></i> AI Önerilerini Getir
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Olay Bildirimi (Kaza, Yol Çalışması vb.) -->
+                        <div style="background: var(--bg-card); padding: 20px; border-radius: 6px; border: 1px solid var(--border);">
+                            <h4 style="margin-bottom: 16px; color: var(--text-main);"><i class="fa-solid fa-triangle-exclamation"></i> Anlık Olay Bildirimi</h4>
+                            <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 12px;">Hattınızdaki olağandışı durumları merkeze iletin:</p>
+                            <div class="signal-buttons" style="display: grid; grid-template-columns: 1fr; gap: 8px;">
+                                <button class="btn signal-btn btn-danger" onclick="reportEvent('kaza')" style="padding: 10px;">
+                                    <i class="fa-solid fa-car-burst"></i> Kaza Var (Kritik)
+                                </button>
+                                <button class="btn signal-btn btn-danger" onclick="reportEvent('full')" style="padding: 10px;">
+                                    <i class="fa-solid fa-users"></i> Otobüs Dolu (Kritik)
+                                </button>
+                                <button class="btn signal-btn btn-warning" onclick="reportEvent('yol_calismasi')" style="padding: 10px; background: rgba(245, 158, 11, 0.2); color: var(--warning); border: 1px solid rgba(245, 158, 11, 0.5);">
+                                    <i class="fa-solid fa-person-digging"></i> Yol Çalışması (Uyarı)
+                                </button>
+                                <button class="btn signal-btn btn-normal" onclick="reportEvent('yogun_trafik')" style="padding: 10px;">
+                                    <i class="fa-solid fa-traffic-light"></i> Yoğun Trafik (Normal)
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Sağ Taraf: Önerilen Hatlar -->
+                    <div style="flex: 2; min-width: 300px; display: flex; flex-direction: column;">
+                        <h4 style="margin-bottom: 16px; color: var(--text-main);"><i class="fa-solid fa-star"></i> Sistem Tarafından Önerilen Yoğun Hatlar</h4>
+                        <div id="recommendedRoutesList" style="display: flex; flex-direction: column; gap: 12px; overflow-y: auto; max-height: 400px; padding-right: 8px;">
+                            <div class="loading">Öneriler yükleniyor...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 3: Rota Yoğunluk Analizi -->
+            <div id="tab-density-analysis" class="tab-content">
+                <div class="section-header" style="margin-bottom: 16px;">
+                    <h3><i class="fa-solid fa-map-location-dot"></i> Hat Yoğunluk Haritası</h3>
+                    <p style="color: var(--text-muted); font-size: 0.9rem;">Rotaların anlık yoğunluk durumunu harita üzerinden detaylı inceleyin.</p>
+                </div>
+                <div class="analysis-panel">
+                    <!-- Map + Controls + Chart Split -->
+                    <div class="analysis-split">
+                        <!-- Top: Leaflet Map -->
+                        <div class="glass-panel map-panel" style="min-height: 500px; display: flex; flex-direction: column;">
+                            <div id="routeMap" style="flex: 1;"></div>
+                            <div class="map-legend">
+                                <span class="map-legend-item"><span class="map-dot red"></span> Aşırı Yoğun</span>
+                                <span class="map-legend-item"><span class="map-dot yellow"></span> Normal</span>
+                                <span class="map-legend-item"><span class="map-dot green"></span> Boş</span>
+                            </div>
+                        </div>
+
+                        <!-- Controls Bar (Moved below map) -->
+                        <div class="glass-panel analysis-controls-bar" style="margin-top: 10px;">
+                            <h3><i class="fa-solid fa-map-location-dot"></i> Harita ve Veri Analizi</h3>
+                            <div class="chart-controls">
+                                <input list="routeSelect" id="routeInput" placeholder="Hat arayın (Örn: 500T)..." onchange="loadRouteAnalysis()">
+                                <datalist id="routeSelect"></datalist>
+                                <button class="btn btn-primary" onclick="loadRouteAnalysis()"><i class="fa-solid fa-arrows-rotate"></i> Analiz Et</button>
+                                <button class="btn btn-primary" onclick="loadAllRoutesOnMap()" style="background: var(--success);"><i class="fa-solid fa-layer-group"></i> Tüm Hatlar</button>
+                            </div>
+                        </div>
+
+                        <!-- Bottom: Chart -->
+                        <div class="glass-panel chart-panel">
+                            <div id="routeInfoCard" class="route-info-card" style="display:none">
+                                <span id="infoRouteName" class="info-badge"></span>
+                                <span id="infoRouteDesc" class="info-desc"></span>
+                                <span id="infoStatus" class="info-status"></span>
+                            </div>
+                            <div class="chart-container" style="flex:1; padding: 16px;">
+                                <canvas id="analysisChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 4: Bildirimler -->
+            <div id="tab-notifications" class="tab-content glass-panel analysis-panel">
+
+                <!-- Özet İstatistik Kartları -->
+                <div class="notif-stats-grid"
+                    style="display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:12px; margin-bottom:24px;">
+                    <div
+                        style="background:rgba(var(--danger-rgb,220,53,69),0.1); border:1px solid rgba(var(--danger-rgb,220,53,69),0.25); border-radius: 6px; padding:16px 20px; display:flex; align-items:center; gap:14px;">
+                        <i class="fa-solid fa-triangle-exclamation"
+                            style="font-size:1.5rem; color:var(--danger,#dc3545);"></i>
+                        <div style="display:flex; flex-direction:column;">
+                            <span id="statCritical"
+                                style="font-size:1.6rem; font-weight:700; color:var(--danger,#dc3545); line-height:1;">0</span>
+                            <span style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">Kritik
+                                Uyarı</span>
+                        </div>
+                    </div>
+                    <div
+                        style="background:rgba(var(--warning-rgb,255,193,7),0.1); border:1px solid rgba(var(--warning-rgb,255,193,7),0.25); border-radius: 6px; padding:16px 20px; display:flex; align-items:center; gap:14px;">
+                        <i class="fa-solid fa-circle-exclamation"
+                            style="font-size:1.5rem; color:var(--warning,#ffc107);"></i>
+                        <div style="display:flex; flex-direction:column;">
+                            <span id="statWarning"
+                                style="font-size:1.6rem; font-weight:700; color:var(--warning,#ffc107); line-height:1;">0</span>
+                            <span style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">Uyarı</span>
+                        </div>
+                    </div>
+                    <div
+                        style="background:rgba(var(--success-rgb,25,135,84),0.1); border:1px solid rgba(var(--success-rgb,25,135,84),0.25); border-radius: 6px; padding:16px 20px; display:flex; align-items:center; gap:14px;">
+                        <i class="fa-solid fa-circle-check" style="font-size:1.5rem; color:var(--success,#198754);"></i>
+                        <div style="display:flex; flex-direction:column;">
+                            <span id="statNormal"
+                                style="font-size:1.6rem; font-weight:700; color:var(--success,#198754); line-height:1;">0</span>
+                            <span style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">Normal</span>
+                        </div>
+                    </div>
+                    <div
+                        style="background:rgba(var(--accent-rgb,13,110,253),0.1); border:1px solid rgba(var(--accent-rgb,13,110,253),0.25); border-radius: 6px; padding:16px 20px; display:flex; align-items:center; gap:14px;">
+                        <i class="fa-solid fa-layer-group" style="font-size:1.5rem; color:var(--accent,#0d6efd);"></i>
+                        <div style="display:flex; flex-direction:column;">
+                            <span id="statTotal"
+                                style="font-size:1.6rem; font-weight:700; color:var(--accent,#0d6efd); line-height:1;">0</span>
+                            <span style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">Toplam Olay</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="notifications-header">
+                    <h3>Sistem Olayları</h3>
+                    <div class="notifications-actions">
+                        <button class="btn btn-sm" onclick="fetchFullNotifications()">
+                            <i class="fa-solid fa-rotate-right"></i> Yenile
+                        </button>
+                        <button class="btn btn-sm btn-danger-outline" onclick="clearAllNotifications()">
+                            <i class="fa-solid fa-trash-can"></i> Temizle
+                        </button>
+                    </div>
+                </div>
+
+                <div class="notifications-filters" style="display: flex; justify-content: center; width: 100%; margin-bottom: 16px;">
+                    <!-- Custom Combobox implementation -->
+                    <div class="custom-select-wrapper" style="max-width: 300px;" onclick="this.classList.toggle('open')">
+                        <div class="custom-select-trigger">
+                            <span id="customSelectText">Tümü</span>
+                            <div class="arrow"></div>
+                        </div>
+                        <div class="custom-options">
+                            <span class="custom-option selected" data-value="all" onclick="selectFilter('all', 'Tümü', this)">Tümü</span>
+                            <span class="custom-option" data-value="danger" onclick="selectFilter('danger', '🔴 Kritik', this)">🔴 Kritik</span>
+                            <span class="custom-option" data-value="warning" onclick="selectFilter('warning', '🟡 Uyarılar', this)">🟡 Uyarılar</span>
+                            <span class="custom-option" data-value="success" onclick="selectFilter('success', '🟢 Normaller', this)">🟢 Normaller</span>
+                        </div>
+                    </div>
+                </div>
+
+                <script>
+                    function selectFilter(val, text, el) {
+                        document.getElementById('customSelectText').textContent = text;
+                        document.querySelectorAll('.custom-option').forEach(opt => opt.classList.remove('selected'));
+                        el.classList.add('selected');
+                        filterNotifications(val, null);
+                    }
+                    
+                    // Close custom select when clicking outside
+                    document.addEventListener('click', function(e) {
+                        const select = document.querySelector('.custom-select-wrapper');
+                        if (select && !select.contains(e.target)) {
+                            select.classList.remove('open');
+                        }
+                    });
+                </script>
+
+                <div class="notifications-list-container">
+                    <div id="notificationsList" class="notifications-list">
+                        <!-- Bildirimler JS ile enjekte edilir -->
+                    </div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- Mobile Bottom Navigation -->
+    <nav class="mobile-bottom-nav">
+        <a class="active" onclick="switchTab('dashboard')"><i class="fa-solid fa-chart-pie"></i><span>Canlı</span></a>
+        <a onclick="switchTab('route-analysis')"><i class="fa-solid fa-route"></i><span>Şoför</span></a>
+        <a onclick="switchTab('density-analysis')"><i class="fa-solid fa-chart-area"></i><span>Yoğunluk</span></a>
+        <a onclick="switchTab('notifications')"><i class="fa-solid fa-bell"></i><span>Bildirim</span></a>
+    </nav>
+
+    <!-- AI Chat Box -->
+    <div class="chat-widget" id="chatWidget">
+        <button class="chat-toggle-btn" onclick="toggleChat()">
+            <i class="fa-solid fa-robot"></i>
+        </button>
+        <div class="chat-window" id="chatWindow">
+            <div class="chat-header">
+                <i class="fa-solid fa-robot"></i> İETT Asistanı
+                <button onclick="toggleChat()" style="background:none; border:none; color:white; cursor:pointer;">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div class="chat-body" id="chatBody">
+                <div class="chat-message assistant">
+                    Merhaba! Ben sistem yapay zeka asistanıyım. Bana "Hangi hatlar yoğun?", "500T durumu nedir?" gibi
+                    sorular sorabilirsiniz.
+                </div>
+            </div>
+            <div class="chat-input-area">
+                <input type="text" id="chatInput" placeholder="Sisteme soru sorun..."
+                    onkeydown="if(event.key === 'Enter') { event.preventDefault(); sendChatMessage(); }">
+                <button id="chatSendBtn" onclick="sendChatMessage()"><i class="fa-solid fa-paper-plane"></i></button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="toast"></div>
+
+    <script src="/static/app.js?v=9"></script>
+    <script>
+        /**
+         * updateNotificationStats({ danger: N, warning: N, success: N })
+         * app.js içinden bildirimler yüklendiğinde bu fonksiyonu çağırın.
+         * Örnek: updateNotificationStats({ danger: 3, warning: 5, success: 12 });
+         */
+        function updateNotificationStats({ danger = 0, warning = 0, success = 0 } = {}) {
+            const total = danger + warning + success;
+            const el = (id, val) => { const e = document.getElementById(id); if (e) e.textContent = val; };
+            el('statCritical', danger);
+            el('statWarning', warning);
+            el('statNormal', success);
+            el('statTotal', total);
+        }
+    </script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then(function (registrations) {
+                for (let registration of registrations) {
+                    registration.unregister();
+                }
+                console.log("Service workers unregistered to clear cache.");
+            });
+        }
+    </script>
+</body>
+
+</html>
