@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+    <!-- Background -->
+    <rect width="512" height="512" rx="100" fill="#3b82f6"/>
+    <!-- Bus Body -->
+    <rect x="106" y="150" width="300" height="200" rx="30" fill="#ffffff"/>
+    <!-- Windows -->
+    <rect x="126" y="170" width="260" height="80" rx="10" fill="#1e293b"/>
+    <!-- Headlights -->
+    <circle cx="156" cy="310" r="15" fill="#facc15"/>
+    <circle cx="356" cy="310" r="15" fill="#facc15"/>
+    <!-- Grill -->
+    <rect x="206" y="300" width="100" height="20" rx="5" fill="#94a3b8"/>
+    <!-- Wheels -->
+    <rect x="136" y="340" width="40" height="40" rx="10" fill="#0f172a"/>
+    <rect x="336" y="340" width="40" height="40" rx="10" fill="#0f172a"/>
+</svg>
